@@ -1,16 +1,20 @@
 "use client";
 
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   EmailAuthProvider,
   User,
   createUserWithEmailAndPassword,
+  getRedirectResult,
   linkWithCredential,
   linkWithPopup,
+  linkWithRedirect,
   onAuthStateChanged,
   signInAnonymously,
   signInWithEmailAndPassword,
   signInWithPopup,
+  signInWithRedirect,
   signOut,
   updateProfile as updateFirebaseAuthProfile,
 } from "firebase/auth";
@@ -65,7 +69,7 @@ interface AuthContextValue {
   signInWithGoogle: (
     preferredDomain?: FieldDomain,
     locationLabel?: string
-  ) => Promise<{ needsOnboarding: boolean }>;
+  ) => Promise<{ needsOnboarding: boolean; redirected?: boolean }>;
   completeOnboarding: (params: {
     domain: FieldDomain;
     zone: string;
@@ -200,6 +204,7 @@ function formatFirebaseAuthError(err: unknown): string {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [cachedUser, setCachedUser] = useState<CachedFieldUser | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -224,6 +229,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let unsubProfile: (() => void) | null = null;
     let isMounted = true;
     let authReadyResolved = false;
+
+    // Handle returning users from a Google signInWithRedirect fallback cleanly
+    getRedirectResult(auth)
+      .then(async (result) => {
+        if (!isMounted || !result?.user) return;
+        const user = result.user;
+        try {
+          const existing = await getDoc(doc(db, "users", user.uid));
+          if (existing.exists()) {
+            const data = existing.data() as Partial<UserProfile>;
+            if (isProfileComplete(data)) {
+              await setDoc(
+                doc(db, "users", user.uid),
+                {
+                  email: user.email ?? null,
+                  displayName:
+                    data.displayName || user.displayName || "Field Operator",
+                  isAnonymous: false,
+                  updatedAt: serverTimestamp(),
+                },
+                { merge: true }
+              );
+              router.replace("/dashboard");
+              return;
+            }
+          }
+          router.replace("/onboarding");
+        } catch (redirectProfileErr) {
+          console.error("[Auth] Redirect profile resolution failed:", redirectProfileErr);
+          router.replace("/onboarding");
+        }
+      })
+      .catch((redirectErr) => {
+        if (!isMounted) return;
+        const message = formatFirebaseAuthError(redirectErr);
+        setAuthError(message);
+      });
 
     // Wait for Firebase Auth to finish restoring IndexedDB state before allowing route redirects.
     auth
@@ -356,7 +398,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       unsubAuth();
       if (unsubProfile) unsubProfile();
     };
-  }, []);
+  }, [router]);
 
   const clearAuthError = useCallback(() => setAuthError(null), []);
 
@@ -563,6 +605,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithGoogle = useCallback(async (): Promise<{
     needsOnboarding: boolean;
+    redirected?: boolean;
   }> => {
     setAuthError(null);
     const auth = getFirebaseAuth();
@@ -601,7 +644,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               email: user.email ?? null,
               displayName: data.displayName || user.displayName || "Field Operator",
               isAnonymous: false,
-              updatedAt: Timestamp.now(),
+              updatedAt: serverTimestamp(),
             },
             { merge: true }
           );
@@ -612,6 +655,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // First-time Google sign-in or incomplete profile: do NOT invent a static zone.
       return { needsOnboarding: true };
     } catch (err) {
+      const code = (err as { code?: string })?.code;
+      if (
+        code === "auth/popup-blocked" ||
+        (err instanceof Error && err.message.includes("auth/popup-blocked"))
+      ) {
+        if (auth.currentUser && auth.currentUser.isAnonymous) {
+          await linkWithRedirect(auth.currentUser, googleAuthProvider);
+        } else {
+          await signInWithRedirect(auth, googleAuthProvider);
+        }
+        return { needsOnboarding: false, redirected: true };
+      }
+
       const message = formatFirebaseAuthError(err);
       setAuthError(message);
       throw new Error(message);

@@ -129,7 +129,8 @@ export function AuthModal({
     setBusy(true);
     clearAuthError();
     try {
-      const { needsOnboarding } = await signInWithGoogle();
+      const { needsOnboarding, redirected } = await signInWithGoogle();
+      if (redirected) return;
       if (needsOnboarding) {
         finishAndNavigate(undefined, "/onboarding");
       } else {
