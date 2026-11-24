@@ -1,6 +1,6 @@
 # TerraPulse AI
 
-🔗 Live Demo: [INSERT_VERCEL_URL]
+🔗 Live Demo: https://terrapulse-ai-gamma.vercel.app/
 
 ![TerraPulse AI Preview](./public/preview.png)
 
