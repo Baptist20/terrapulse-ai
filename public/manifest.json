@@ -1,0 +1,10 @@
+{
+  "name": "TerraPulse AI — Hybrid Edge Field Copilot",
+  "short_name": "TerraPulse AI",
+  "description": "Offline-first hybrid AI SaaS copilot for farmers, agronomists, and civil site engineers operating in cellular dead zones.",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#090D16",
+  "theme_color": "#059669",
+  "orientation": "portrait-primary"
+}
