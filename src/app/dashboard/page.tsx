@@ -723,7 +723,7 @@ function DashboardContent() {
                 </span>
               </div>
               <p className="text-xs text-[#64748B] dark:text-[#C4C7C7]">
-                Zero-connectivity local triage for less than 2s at 0 KB.
+                Zero-connectivity local triage at 0 KB.
               </p>
             </div>
 

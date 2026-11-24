@@ -229,7 +229,7 @@ export function LandingPage() {
                 </h1>
 
                 <p className="max-w-[650px] text-base sm:text-[18px] leading-[28px] text-slate-700 dark:text-slate-300">
-                  Run sub-2-second multimodal triage directly on-device with Chrome Gemini Nano in
+                  Run zero-data multimodal triage directly on-device with Chrome Gemini Nano in
                   zero-connectivity dead zones. Automatically sync logs and escalate to Gemini 3.8
                   Flash cloud audits the moment signal returns.
                 </p>
@@ -401,7 +401,7 @@ export function LandingPage() {
                     02
                   </span>
                   <span className="inline-flex items-center rounded-xl border border-[#006600] dark:border-[#10B981] bg-white dark:bg-emerald-950/30 px-2.5 py-1 text-xs font-bold uppercase tracking-[0.3px] text-[#006600] dark:text-[#10B981]">
-                    &lt; 2.0S ON-DEVICE
+                    ON-DEVICE • 0 KB
                   </span>
                 </div>
                 <div className="flex flex-col gap-1.5">
@@ -715,7 +715,7 @@ export function LandingPage() {
                       Field Scenario / Observation
                     </th>
                     <th className="px-4 py-3.5 text-xs font-bold uppercase tracking-[0.6px] text-[#475569] dark:text-slate-400">
-                      On-Device Nano (&lt;2s)
+                      On-Device Nano (0 KB)
                     </th>
                     <th className="px-4 py-3.5 text-xs font-bold uppercase tracking-[0.6px] text-[#475569] dark:text-slate-400">
                       Offline Queue / Cloud Escalation

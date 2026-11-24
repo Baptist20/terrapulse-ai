@@ -108,11 +108,11 @@ export function initFirebaseAppCheck(): AppCheck | null {
 
   const configuredDebugToken =
     process.env.NEXT_PUBLIC_FIREBASE_APPCHECK_DEBUG_TOKEN?.trim();
-  const recaptchaEnterpriseSiteKey =
-    process.env.NEXT_PUBLIC_RECAPTCHA_ENTERPRISE_SITE_KEY?.trim();
-  const recaptchaV3SiteKey =
-    process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY?.trim() ||
-    process.env.NEXT_PUBLIC_RECAPTCHA_V3_SITE_KEY?.trim();
+  const enterpriseKey = (
+    process.env.NEXT_PUBLIC_RECAPTCHA_ENTERPRISE_SITE_KEY ||
+    process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY
+  )?.trim();
+  const v3Key = process.env.NEXT_PUBLIC_RECAPTCHA_V3_SITE_KEY?.trim();
 
   try {
     // 2. Set debug token on `self` BEFORE calling initializeAppCheck(...)
@@ -128,19 +128,14 @@ export function initFirebaseAppCheck(): AppCheck | null {
       );
     }
 
-    if (
-      isDevHost ||
-      configuredDebugToken ||
-      recaptchaEnterpriseSiteKey ||
-      recaptchaV3SiteKey
-    ) {
-      const providerName = recaptchaEnterpriseSiteKey
+    if (isDevHost || configuredDebugToken || enterpriseKey || v3Key) {
+      const providerName = enterpriseKey
         ? "ReCaptchaEnterpriseProvider"
         : "ReCaptchaV3Provider";
-      const provider = recaptchaEnterpriseSiteKey
-        ? new ReCaptchaEnterpriseProvider(recaptchaEnterpriseSiteKey)
+      const provider = enterpriseKey
+        ? new ReCaptchaEnterpriseProvider(enterpriseKey)
         : new ReCaptchaV3Provider(
-            recaptchaV3SiteKey ?? "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI"
+            v3Key ?? "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI"
           );
 
       console.log(`[App Check] Calling initializeAppCheck with ${providerName}...`);
@@ -162,7 +157,7 @@ export function initFirebaseAppCheck(): AppCheck | null {
         message:
           isDevHost || configuredDebugToken
             ? "Debug Token Active — check browser console for App Check debug token"
-            : recaptchaEnterpriseSiteKey
+            : enterpriseKey
               ? "reCAPTCHA Enterprise Enforced"
               : "reCAPTCHA v3 Enforced",
       };

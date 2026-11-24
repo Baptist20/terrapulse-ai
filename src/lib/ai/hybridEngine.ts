@@ -35,8 +35,6 @@ function getHybridAI(): AI {
   return firebaseAiSingleton;
 }
 
-const AI_REQUEST_TIMEOUT_MS = 90_000;
-const DEVICE_INIT_TIMEOUT_MS = 45_000;
 const OFFLINE_SDK_FALLBACK_TIMEOUT_MS = 15_000;
 const LOCAL_NANO_MAX_INPUT_CHARS = 550;
 const DEFAULT_CLOUD_MODEL = "gemini-3.8-flash";
@@ -271,15 +269,11 @@ export async function ensureDeviceModelInitialized(
         },
       });
 
-      await withTimeout(
-        ephemeralModel.initializeDeviceModel((val) => {
-          const pct = Math.round(val * 10000) / 100;
-          console.log(`[AI Engine] Gemini Nano download progress: ${pct}%`);
-          onProgress?.(pct);
-        }),
-        AI_REQUEST_TIMEOUT_MS,
-        "Device model initialization timed out after 90s — check Chrome Prompt API flags"
-      );
+      await ephemeralModel.initializeDeviceModel((val) => {
+        const pct = Math.round(val * 10000) / 100;
+        console.log(`[AI Engine] Gemini Nano download progress: ${pct}%`);
+        onProgress?.(pct);
+      });
     };
 
     try {
@@ -436,11 +430,8 @@ async function runDirectChromeLanguageModel(params: {
         initialPrompts: [{ role: "system", content: params.systemPrompt }],
       };
 
-  const session = await withTimeout(
-    lm.create(createOptions),
-    DEVICE_INIT_TIMEOUT_MS,
-    "Direct Chrome LanguageModel session creation timed out after 45s"
-  );
+  // Allow cold-start on-device model loading to complete naturally without artificial timeout
+  const session = await lm.create(createOptions);
 
   try {
     let promptInput: ChromePromptInput = params.userPrompt;
@@ -480,11 +471,7 @@ async function runDirectChromeLanguageModel(params: {
       return accumulated.trim();
     }
 
-    const full = await withTimeout(
-      session.prompt(promptInput),
-      AI_REQUEST_TIMEOUT_MS,
-      "Direct Chrome LanguageModel prompt timed out after 90s"
-    );
+    const full = await session.prompt(promptInput);
     params.onStreamChunk?.(full);
     return full.trim();
   } finally {
@@ -1304,19 +1291,20 @@ export async function runFieldTriage(params: {
         { useLocalOfflineVision, offlineMultimodalAvail }
       );
       try {
-        await withTimeout(
-          model.initializeDeviceModel((val) => {
-            const pct = Math.round(val * 10000) / 100;
-            console.log(`[AI Engine] 2b. Device model download progress: ${pct}%`);
-            onDeviceInitProgress?.(pct);
-          }),
-          useFastOfflineRace
-            ? OFFLINE_SDK_FALLBACK_TIMEOUT_MS
-            : DEVICE_INIT_TIMEOUT_MS,
-          useFastOfflineRace
-            ? "firebase/ai initializeDeviceModel exceeded 15s offline threshold"
-            : "On-device Gemini Nano initialization timed out after 45s"
-        );
+        const initPromise = model.initializeDeviceModel((val) => {
+          const pct = Math.round(val * 10000) / 100;
+          console.log(`[AI Engine] 2b. Device model download progress: ${pct}%`);
+          onDeviceInitProgress?.(pct);
+        });
+        if (useFastOfflineRace) {
+          await withTimeout(
+            initPromise,
+            OFFLINE_SDK_FALLBACK_TIMEOUT_MS,
+            "firebase/ai initializeDeviceModel exceeded 15s offline threshold"
+          );
+        } else {
+          await initPromise;
+        }
         deviceModelInitialized = true;
         console.log(
           "[AI Engine] 2. Device model initialization completed on active model instance."
@@ -2111,11 +2099,8 @@ async function streamDirectChromeLanguageModel(params: {
   console.log(
     "[AI Engine] Creating direct Chrome LanguageModel streaming session (0 KB offline path)..."
   );
-  const session = await withTimeout(
-    lm.create({ initialPrompts }),
-    DEVICE_INIT_TIMEOUT_MS,
-    "Direct Chrome LanguageModel session creation timed out after 45s"
-  );
+  // Allow cold-start on-device model loading to complete naturally without artificial timeout
+  const session = await lm.create({ initialPrompts });
 
   try {
     if (typeof session.promptStreaming === "function") {
@@ -2135,11 +2120,7 @@ async function streamDirectChromeLanguageModel(params: {
       return accumulated.trim();
     }
 
-    const full = await withTimeout(
-      session.prompt(params.message),
-      AI_REQUEST_TIMEOUT_MS,
-      "Direct Chrome LanguageModel prompt timed out after 90s"
-    );
+    const full = await session.prompt(params.message);
     params.onChunk(full);
     return full.trim();
   } finally {
@@ -2251,18 +2232,19 @@ export async function streamFieldAssistantChat(params: {
     let initOfflineError: unknown = null;
 
     try {
-      await withTimeout(
-        model.initializeDeviceModel((val) => {
-          const pct = Math.round(val * 10000) / 100;
-          onDeviceInitProgress?.(pct);
-        }),
-        useFastOfflineRace
-          ? OFFLINE_SDK_FALLBACK_TIMEOUT_MS
-          : DEVICE_INIT_TIMEOUT_MS,
-        useFastOfflineRace
-          ? "firebase/ai chat initializeDeviceModel exceeded 15s offline threshold"
-          : "On-device Gemini Nano initialization timed out after 45s"
-      );
+      const chatInitPromise = model.initializeDeviceModel((val) => {
+        const pct = Math.round(val * 10000) / 100;
+        onDeviceInitProgress?.(pct);
+      });
+      if (useFastOfflineRace) {
+        await withTimeout(
+          chatInitPromise,
+          OFFLINE_SDK_FALLBACK_TIMEOUT_MS,
+          "firebase/ai chat initializeDeviceModel exceeded 15s offline threshold"
+        );
+      } else {
+        await chatInitPromise;
+      }
       deviceModelInitialized = true;
     } catch (initErr) {
       console.warn(

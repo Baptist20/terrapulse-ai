@@ -4,7 +4,7 @@
 
 ![TerraPulse AI Preview](./public/preview.png)
 
-TerraPulse AI is a Hybrid Edge + Cloud AI copilot and installable Progressive Web App (PWA) for field diagnostics across agriculture (`Agri-Field`) and civil construction (`Site-Ops`). It runs sub-2-second text and multimodal triage locally on-device using Chrome Built-in AI (`Gemini Nano`) in zero-connectivity environments, then synchronizes queued logs and escalates to Gemini cloud models via Firebase AI Logic when network signal returns.
+TerraPulse AI is a Hybrid Edge + Cloud AI copilot and installable Progressive Web App (PWA) for field diagnostics across agriculture (`Agri-Field`) and civil construction (`Site-Ops`). It runs zero-connectivity text and multimodal triage locally on-device at 0 KB using Chrome Built-in AI (`Gemini Nano`), then synchronizes queued logs and escalates to Gemini cloud models via Firebase AI Logic when network signal returns.
 
 ---
 
