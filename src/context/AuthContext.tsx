@@ -230,11 +230,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let isMounted = true;
     let authReadyResolved = false;
 
-    // Handle returning users from a Google signInWithRedirect fallback cleanly
-    getRedirectResult(auth)
+    // Await getRedirectResult(auth) BEFORE letting unauthenticated route guards redirect away
+    const redirectCheckPromise = getRedirectResult(auth)
       .then(async (result) => {
-        if (!isMounted || !result?.user) return;
+        if (!isMounted || !result?.user) return null;
         const user = result.user;
+        setFirebaseUser(user);
         try {
           const existing = await getDoc(doc(db, "users", user.uid));
           if (existing.exists()) {
@@ -252,19 +253,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 { merge: true }
               );
               router.replace("/dashboard");
-              return;
+              return user;
             }
           }
           router.replace("/onboarding");
+          return user;
         } catch (redirectProfileErr) {
-          console.error("[Auth] Redirect profile resolution failed:", redirectProfileErr);
+          console.error("[Auth] Redirect profile resolution failed:", {
+            code: (redirectProfileErr as { code?: string })?.code,
+            message:
+              redirectProfileErr instanceof Error
+                ? redirectProfileErr.message
+                : String(redirectProfileErr),
+          });
           router.replace("/onboarding");
+          return user;
         }
       })
       .catch((redirectErr) => {
-        if (!isMounted) return;
+        console.error("[Auth] Google redirect result error:", {
+          code: (redirectErr as { code?: string })?.code,
+          message:
+            redirectErr instanceof Error
+              ? redirectErr.message
+              : String(redirectErr),
+        });
+        if (!isMounted) return null;
         const message = formatFirebaseAuthError(redirectErr);
         setAuthError(message);
+        return null;
       });
 
     // Wait for Firebase Auth to finish restoring IndexedDB state before allowing route redirects.
@@ -278,6 +295,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
 
     const unsubAuth = onAuthStateChanged(auth, async (user) => {
+      await redirectCheckPromise;
+
       if (!authReadyResolved) {
         try {
           await auth.authStateReady();
@@ -289,14 +308,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (!isMounted) return;
 
+      const resolvedAuthUser = user ?? auth.currentUser;
+
       if (unsubProfile) {
         unsubProfile();
         unsubProfile = null;
       }
 
-      setFirebaseUser(user);
+      setFirebaseUser(resolvedAuthUser);
 
-      if (!user) {
+      if (!resolvedAuthUser) {
         // Never log out or wipe cached role if we're physically offline with a cached session.
         const latestCached = loadCachedFieldUser();
         const isDeviceOffline =
@@ -311,11 +332,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      const activeUser = resolvedAuthUser;
       const latestCached = loadCachedFieldUser();
       const cachedForThisUser =
-        latestCached?.uid === user.uid ? latestCached : null;
+        latestCached?.uid === activeUser.uid ? latestCached : null;
 
-      const userRef = doc(db, "users", user.uid);
+      const userRef = doc(db, "users", activeUser.uid);
 
       unsubProfile = onSnapshot(
         userRef,
@@ -336,18 +358,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               resolvedZone.length > 0;
 
             const resolvedProfile: UserProfile = {
-              uid: user.uid,
+              uid: activeUser.uid,
               displayName:
                 data.displayName ||
-                user.displayName ||
-                (user.isAnonymous ? "Field Operator (Demo)" : "Field Operator"),
-              email: data.email ?? user.email ?? null,
+                activeUser.displayName ||
+                (activeUser.isAnonymous ? "Field Operator (Demo)" : "Field Operator"),
+              email: data.email ?? activeUser.email ?? null,
               domain: resolvedDomain,
               defaultDomain: resolvedDomain ?? "agri",
               zone: resolvedZone,
               locationLabel: resolvedZone,
               onboardingCompleted: completed,
-              isAnonymous: user.isAnonymous,
+              isAnonymous: activeUser.isAnonymous,
               createdAt: data.createdAt ?? Timestamp.now(),
               updatedAt: data.updatedAt,
             };
@@ -355,9 +377,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (completed) {
               setCachedUser(saveCachedFieldUser(resolvedProfile));
             }
-          } else if (user.isAnonymous) {
+          } else if (activeUser.isAnonymous) {
             const demoProfile = buildDemoProfile(
-              user,
+              activeUser,
               cachedForThisUser?.domain ?? "agri",
               cachedForThisUser?.zone
             );
@@ -381,8 +403,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         () => {
           if (cachedForThisUser) {
             setProfile(profileFromCachedUser(cachedForThisUser));
-          } else if (user.isAnonymous) {
-            const demoProfile = buildDemoProfile(user, "agri");
+          } else if (activeUser.isAnonymous) {
+            const demoProfile = buildDemoProfile(activeUser, "agri");
             setProfile(demoProfile);
             setCachedUser(saveCachedFieldUser(demoProfile));
           } else {
@@ -656,10 +678,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { needsOnboarding: true };
     } catch (err) {
       const code = (err as { code?: string })?.code;
-      if (
-        code === "auth/popup-blocked" ||
-        (err instanceof Error && err.message.includes("auth/popup-blocked"))
-      ) {
+      const rawMessage = err instanceof Error ? err.message : String(err);
+      console.error("[Auth] Google sign-in error:", { code, message: rawMessage });
+
+      if (code === "auth/popup-blocked") {
         if (auth.currentUser && auth.currentUser.isAnonymous) {
           await linkWithRedirect(auth.currentUser, googleAuthProvider);
         } else {
